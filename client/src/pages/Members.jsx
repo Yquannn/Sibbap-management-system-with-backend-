@@ -22,6 +22,7 @@ const Members = () => {
       const params = searchTerm ? { name: searchTerm } : {};
       const response = await axios.get("http://localhost:3001/api/members", { params });
       setMembers(response.data);
+      
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.message || err.message);
@@ -77,18 +78,15 @@ const handleDelete = async (id) => {
   const confirmDelete = window.confirm("Are you sure you want to delete this member?");
   if (confirmDelete) {
     try {
-      // Make the DELETE request to the backend
       await axios.delete(`http://localhost:3001/api/members/${id}`);
       
-      // Remove the member from the state after successful deletion
       setMembers((prevMembers) => prevMembers.filter((member) => member.id !== id));
       
-      // Set a success message
       setSuccessMessage("Member deleted successfully!");
-      setErrorMessage(""); // Clear any previous error messages
+      setErrorMessage(""); 
     } catch (error) {
       console.error("Error deleting member:", error);
-      setErrorMessage("Error deleting member"); // Set an error message in case of failure
+      setErrorMessage("Error deleting member"); 
     }
   }
 };
@@ -140,7 +138,7 @@ const handleDelete = async (id) => {
           </thead>
           <tbody>
             {filteredMembers.map((member) => (
-              <tr key={member.id} className="text-center hover:bg-gray-100">
+              <tr key={member.id} className="text-center hover:bg-gray-100 cursor-pointer">
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.id}</td>
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.memberId}</td>
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.fullName}</td>

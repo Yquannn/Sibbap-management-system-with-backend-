@@ -1,6 +1,7 @@
-const db = require('../config/db'); // Ensure you import your database connection
+const db = require('../config/db');
+// const multer = require('multer');
+// const path = require('path');
 
-// Utility function to wrap db.query in a Promise
 const queryDatabase = (query, params) => {
   return new Promise((resolve, reject) => {
     db.query(query, params, (error, results) => {
@@ -12,19 +13,18 @@ const queryDatabase = (query, params) => {
   });
 };
 
-// Function to generate a unique member ID
 const generateUniqueMemberId = async () => {
-  const currentYear = new Date().getFullYear() % 100; // Last two digits of the current year
-  let uniqueId = `${currentYear}`; // Start with the year
+  const currentYear = new Date().getFullYear() % 100; 
+  let uniqueId = `${currentYear}`; 
 
   const query = 'SELECT MAX(CAST(memberId AS UNSIGNED)) AS maxId FROM member_information WHERE memberId LIKE ?';
-  const queryParams = [`${currentYear}%`]; // Consider IDs starting with the current year
+  const queryParams = [`${currentYear}%`]; 
 
   try {
     const results = await queryDatabase(query, queryParams);
     const maxId = results[0].maxId;
-    const newId = maxId ? parseInt(maxId.toString().slice(2)) + 1 : 1; // Increment ID
-    uniqueId += String(newId).padStart(4, '0'); // Ensure it's 4 digits long after the year
+    const newId = maxId ? parseInt(maxId.toString().slice(2)) + 1 : 1;
+    uniqueId += String(newId).padStart(4, '0'); 
     return uniqueId;
   } catch (error) {
     console.error('Error generating unique member ID:', error);
@@ -32,7 +32,6 @@ const generateUniqueMemberId = async () => {
   }
 };
 
-// Function to format the date to "YYYY-MM-DD"
 const formatDate = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are zero-based
@@ -47,7 +46,6 @@ exports.getMembers = async (req, res) => {
   let query = 'SELECT * FROM member_information';
   const queryParams = [];
 
-  // If memberName is provided, filter the results by full name
   if (memberName) {
     query += ' WHERE LOWER(fullName) = ?';
     queryParams.push(memberName.toLowerCase());
@@ -56,7 +54,7 @@ exports.getMembers = async (req, res) => {
   try {
     const results = await queryDatabase(query, queryParams);
     if (results.length > 0) {
-      res.json(results); // Send the results back as a JSON response
+      res.json(results); 
     } else {
       res.status(404).json({ message: 'No members found' });
     }
@@ -66,21 +64,19 @@ exports.getMembers = async (req, res) => {
   }
 };
 
-// Controller to handle GET requests to retrieve a member by ID
 exports.getMemberById = async (req, res) => {
-  const id = req.params.id; // Get the member ID from request parameters
+  const id = req.params.id; 
 
-  // Validate id (ensure it's a valid number)
   if (!id || isNaN(id)) {
     return res.status(400).json({ message: 'Invalid member ID' });
   }
 
-  const query = 'SELECT * FROM member_information WHERE id = ?'; // Ensure you are querying by the correct field
+  const query = 'SELECT * FROM member_information WHERE id = ?';
 
   try {
-    const results = await queryDatabase(query, [id]); // Using the Promise-based query function
+    const results = await queryDatabase(query, [id]); 
     if (results.length > 0) {
-      res.json(results[0]); // Send the member data as a JSON response
+      res.json(results[0]); 
     } else {
       res.status(404).json({ message: 'Member not found' });
     }
@@ -90,34 +86,42 @@ exports.getMemberById = async (req, res) => {
   }
 };
 
-// Controller to handle POST requests to add a new member
-exports.addMember = async (req, res) => {
-  const { fullName, age, contactNumber, gender, address, sharedCapital, email, password, memberSince } = req.body;
+// Controller to handle POST requests to add a member
+exports.addMember = [
+  async (req, res) => {
+    const { fullName, age, contactNumber, gender, address, sharedCapital, email, password, memberSince } = req.body;
+    const idPicture = req.file ? req.file.filename : null; // This can be null if no file is uploaded
+    const formattedMemberSince = memberSince ? formatDate(new Date(memberSince)) : formatDate(new Date());
 
-  // If memberSince is provided, use it; otherwise, use the current date (formatted)
-  const formattedMemberSince = memberSince ? formatDate(new Date(memberSince)) : formatDate(new Date());
+    try {
+      const memberId = await generateUniqueMemberId(); 
+      const query = `
+        INSERT INTO member_information 
+        (memberId, fullName, age, contactNumber, gender, address, sharedCapital, memberSince, email, password, idPicture) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      const queryParams = [
+        memberId, fullName, age, contactNumber, gender, address, sharedCapital, formattedMemberSince, email, password, idPicture
+      ];
 
-  try {
-    const memberId = await generateUniqueMemberId(); // Generate a unique member ID
-    const query = `
-      INSERT INTO member_information 
-      (memberId, fullName, age, contactNumber, gender, address, sharedCapital, memberSince, email, password) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    const queryParams = [memberId, fullName, age, contactNumber, gender, address, sharedCapital, formattedMemberSince, email, password];
-
-    await queryDatabase(query, queryParams); // Await the insert operation
-    res.status(201).json({ id: memberId, message: 'Member added successfully' });
-  } catch (error) {
-    console.error('Error inserting data into MySQL:', error);
-    res.status(500).json({ message: 'Error inserting data into MySQL' });
+      await queryDatabase(query, queryParams); // Await the insert operation
+      res.status(201).json({ message: 'Member added successfully', idPicture });
+    } catch (error) {
+      console.error('Error inserting data into MySQL:', error);
+      res.status(500).json({ message: 'Error inserting data into MySQL' });
+    }
   }
-};
+];
 
 // Controller to handle PUT requests to update a member
 exports.updateMember = async (req, res) => {
   const id = req.params.id;
   const { fullName, age, contactNumber, gender, address, sharedCapital, email, password } = req.body;
+  const idPicture = req.file ? req.file.filename : null; // Allow idPicture to be null if no file is uploaded
+
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid member ID' });
+  }
 
   const query = `
     UPDATE member_information
@@ -129,10 +133,12 @@ exports.updateMember = async (req, res) => {
       address = ?, 
       sharedCapital = ?, 
       email = ?, 
-      password = ?
+      password = ?, 
+      idPicture = ?
     WHERE id = ?
   `;
-  const queryParams = [fullName, age, contactNumber, gender, address, sharedCapital, email, password, id];
+
+  const queryParams = [fullName, age, contactNumber, gender, address, sharedCapital, email, password, idPicture, id];
 
   try {
     const result = await queryDatabase(query, queryParams); // Await the update operation
@@ -152,6 +158,10 @@ exports.deleteMember = async (req, res) => {
   const id = req.params.id;
   const query = "DELETE FROM member_information WHERE id = ?";
 
+  if (!id || isNaN(id)) {
+    return res.status(400).json({ message: 'Invalid member ID' });
+  }
+
   try {
     const result = await queryDatabase(query, [id]);
     if (result.affectedRows > 0) {
@@ -164,6 +174,3 @@ exports.deleteMember = async (req, res) => {
     res.status(500).json({ message: 'Error deleting member' });
   }
 };
-
-
-
