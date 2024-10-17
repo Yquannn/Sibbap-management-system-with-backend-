@@ -35,7 +35,7 @@ const AddMemberModal = ({ isOpen, onClose, onSave, memberIdToEdit }) => {
           sharedCapital: response.data.sharedCapital,
           email: response.data.email,
           password: response.data.password,
-          idPicture: response.data.idPicture ,
+          idPicture: response.data.idPicture, // Keep value, exclude from rendering
           applicationForm: null,
           barangayClearance: null,
           tin: null,
@@ -107,7 +107,7 @@ const AddMemberModal = ({ isOpen, onClose, onSave, memberIdToEdit }) => {
     formData.append('email', newMember.email);
     formData.append('password', newMember.password);
     if (newMember.idPicture) {
-      formData.append('idPicture', newMember.idPicture);
+      formData.append('idPicture', newMember.idPicture); // Keep the idPicture in the formData
     }
     if (newMember.applicationForm) {
       formData.append('applicationForm', newMember.applicationForm);
@@ -172,7 +172,7 @@ const AddMemberModal = ({ isOpen, onClose, onSave, memberIdToEdit }) => {
                     <option value="OTHER">OTHER</option>
                   </select>
                 </div>
-              ) : key !== 'applicationForm' && key !== 'barangayClearance' && key !== 'tin' && key !== 'pmes' ? (
+              ) : key !== 'idPicture' && key !== 'applicationForm' && key !== 'barangayClearance' && key !== 'tin' && key !== 'pmes' ? (
                 <div key={key}>
                   <label className="block text-gray-700">{key.toUpperCase()}:</label>
                   <input
@@ -198,7 +198,7 @@ const AddMemberModal = ({ isOpen, onClose, onSave, memberIdToEdit }) => {
                 <input type="file" id="applicationForm" name="applicationForm" onChange={handleFileChange} className="w-full" />
               </div>
               <div>
-                <label className="block text-gray-700" >ID PICTURE (1X1 AND 2X2):</label>
+                <label className="block text-gray-700">ID PICTURE (1X1 AND 2X2):</label>
                 {newMember.idPicture && (
                   <a 
                     href={`http://localhost:3001/uploads/${newMember.idPicture}`} 
