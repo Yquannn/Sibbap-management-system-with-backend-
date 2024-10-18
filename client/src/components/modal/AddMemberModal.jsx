@@ -163,7 +163,6 @@ const AddMemberModal = ({ isOpen, onClose, onSave, memberIdToEdit }) => {
                   <select 
                     value={newMember[key]} 
                     onChange={(e) => setNewMember({ ...newMember, [key]: e.target.value })} 
-                    required 
                     className="mt-1 p-2 border border-gray-300 rounded-md w-full"
                   >
                     <option value="">Select Gender</option>

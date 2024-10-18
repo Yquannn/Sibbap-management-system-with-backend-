@@ -129,7 +129,7 @@ const handleDelete = async (id) => {
         <table className="min-w-full table-auto bg-white border border-gray-300 text-sm">
           <thead className="sticky top-0 bg-green-200 z-20 text-center">
             <tr>
-              {["ID", "Member ID", "Full Name", "Age", "Gender", "Contact Number", "Address", "Shared Capital", "Action"].map((heading) => (
+              {["Member Code", "Full Name", "Age", "Gender", "Contact Number", "Address", "Shared Capital", "Action"].map((heading) => (
                 <th key={heading} className="py-3 px-4 border-b border-gray-300 text-center">
                   {heading}
                 </th>
@@ -139,8 +139,8 @@ const handleDelete = async (id) => {
           <tbody>
             {filteredMembers.map((member) => (
               <tr key={member.id} className="text-center hover:bg-gray-100 cursor-pointer">
-                <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.id}</td>
-                <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.memberId}</td>
+                {/* <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.id}</td> */}
+                <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.memberCode}</td>
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.fullName}</td>
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.age}</td>
                 <td className="py-3 px-4 border-b border-gray-300 text-sm">{member.gender}</td>

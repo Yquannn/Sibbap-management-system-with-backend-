@@ -22,7 +22,7 @@ router.get('/total', dashboardController.getTotalMembers);
 router.get('/members', memberController.getMembers);        
 router.get('/members/:id', memberController.getMemberById); 
 router.post('/members', upload.single('idPicture'), memberController.addMember);
-router.put('/members/:id', upload.single('idPicture'), memberController.updateMember); // Also allow file update on PUT
+router.put('/members/:id', upload.single('idPicture'), memberController.updateMember); 
 router.delete('/members/:id', memberController.deleteMember); 
 
 // Error handling middleware
