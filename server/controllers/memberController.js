@@ -1,61 +1,71 @@
-const db = require('../config/db'); // Ensure this is configured for mysql2 with a pool
-const bcrypt = require('bcrypt');
+const db = require('../config/db');
+const memberModel= require('../models/memberModel')
 
-// Function to execute a query on the database
-const queryDatabase = async (query, params) => {
-  const connection = await db.getConnection(); // Get a connection from the pool
-  try {
-    const [results] = await connection.execute(query, params);
-    return results;
-  } finally {
-    connection.release(); // Always release the connection back to the pool
-  }
-};
-
-// Function to generate a unique member ID
-const generateUniqueMemberId = async () => {
-  const currentYear = new Date().getFullYear() % 100; 
-  let uniqueId = `${currentYear}`; 
-
-  const query = 'SELECT MAX(CAST(memberCode AS UNSIGNED)) AS maxId FROM member_information WHERE memberCode LIKE ?';
-  const queryParams = [`${currentYear}%`]; 
-
-  try {
-    const results = await queryDatabase(query, queryParams);
-    const maxId = results[0]?.maxId; // Use optional chaining for safety
-    const newId = maxId ? parseInt(maxId.toString().slice(2)) + 1 : 1;
-    uniqueId += String(newId).padStart(4, '0'); 
-    return uniqueId;
-  } catch (error) {
-    console.error('Error generating unique member ID:', error);
-    throw new Error('Error generating unique member ID');
-  }
-};
-
-// Function to format dates to "YYYY-MM-DD"
-const formatDate = (date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are zero-based
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`; // Returns "YYYY-MM-DD"
-};
-
-// Controller to handle GET requests to retrieve all members or filter by name
+const { queryDatabase, generateUniqueMemberId, formatDate } = require('../utils/databaseHelper');
 exports.getMembers = async (req, res) => {
-  const memberName = req.query.name; // Query parameter for member's name
+  const memberName = req.query.name;
+  
+  let query = `
+    SELECT mi.*, 
+           ma.email, 
+           ma.password, 
+           ma.accountStatus, 
+           b.beneficiaryName, 
+           b.relationship, 
+           b.beneficiaryContactNumber, 
+           c.referenceName, 
+           c.position, 
+           c.referenceContactNumber
+    FROM members mi
+    LEFT JOIN member_account ma ON mi.memberId = ma.memberId
+    LEFT JOIN beneficiaries b ON mi.memberId = b.memberId
+    LEFT JOIN character_references c ON mi.memberId = c.memberId`;
 
-  let query = 'SELECT * FROM member_information';
   const queryParams = [];
 
   if (memberName) {
-    query += ' WHERE LOWER(fullName) = ?';
+    query += ' WHERE LOWER(mi.fullName) = ?';  // Filtering by member name if provided
     queryParams.push(memberName.toLowerCase());
   }
 
   try {
-    const results = await queryDatabase(query, queryParams);
-    if (results.length > 0) {
-      res.json(results); 
+    const members = await queryDatabase(query, queryParams);
+
+    if (members.length > 0) {
+      // Create a map to store members by memberId to avoid duplicates
+      const memberMap = new Map();
+
+      members.forEach(member => {
+        // If the member is not in the map, add it
+        if (!memberMap.has(member.memberId)) {
+          memberMap.set(member.memberId, {
+            ...member,
+            beneficiaries: [],
+            references: []
+          });
+        }
+
+        // Add the beneficiary data
+        if (member.beneficiaryName) {
+          memberMap.get(member.memberId).beneficiaries.push({
+            beneficiaryName: member.beneficiaryName,
+            relationship: member.relationship,
+            beneficiaryContactNumber: member.beneficiaryContactNumber
+          });
+        }
+
+        // Add the reference data
+        if (member.referenceName) {
+          memberMap.get(member.memberId).references.push({
+            referenceName: member.referenceName,
+            position: member.position,
+            referenceContactNumber: member.referenceContactNumber
+          });
+        }
+      });
+
+      // Convert the map back to an array and send the response
+      res.json(Array.from(memberMap.values()));
     } else {
       res.status(404).json({ message: 'No members found' });
     }
@@ -65,11 +75,10 @@ exports.getMembers = async (req, res) => {
   }
 };
 
-exports.getMemberById = async (req, res) => {
-  const id = req.params.id; // Use id from request parameters
-  console.log('Requested ID:', id); // Log the requested ID
 
-  // Validate the ID
+
+exports.getMemberById = async (req, res) => {
+  const id = req.params.id; 
   if (!id || typeof id !== 'string' || id.trim() === '') {
     return res.status(400).json({ message: 'Invalid member ID' });
   }
@@ -77,14 +86,11 @@ exports.getMemberById = async (req, res) => {
   const query = `
     SELECT m.*, ma.email, ma.password, ma.accountStatus 
     FROM member_information m
-    LEFT JOIN member_account ma ON m.id = ma.memberId  -- Use id for join condition
-    WHERE m.id = ?
-  `;
+    LEFT JOIN member_account ma ON m.id = ma.memberId  
+    WHERE m.id = ?`;
 
   try {
     const results = await queryDatabase(query, [id]); 
-    console.log('Query results:', results); // Log query results
-
     if (results.length > 0) {
       res.json(results[0]); 
     } else {
@@ -97,79 +103,161 @@ exports.getMemberById = async (req, res) => {
 };
 
 
-
-// Controller to handle POST requests to add a member
 exports.addMember = async (req, res) => {
-  const { fullName, age, contactNumber, gender, address, sharedCapital, email, password, memberSince } = req.body;
-  const idPicture = req.file ? req.file.filename : null; 
-  const formattedMemberSince = memberSince ? formatDate(new Date(memberSince)) : formatDate(new Date());
+  const { 
+    registrationType, memberType, registrationDate, shareCapital,
+    fullNameLastName, fullNameFirstName, fullNameMiddleName, maidenName,
+    tinNumber, dateOfBirth, birthplaceProvince, age, 
+    sex, civilStatus, highestEducationalAttainment, 
+    occupationSourceOfIncome, spouseName, spouseOccupationSourceOfIncome,
+    primaryBeneficiaryName, primaryBeneficiaryRelationship, primaryBeneficiaryContact,
+    secondaryBeneficiaryName, secondaryBeneficiaryRelationship, secondaryBeneficiaryContact,
+    contactNumber, houseNoStreet, barangay, city, referenceName, position, referenceContact,
+    email, password 
+  } = req.body;
 
-  const connection = await db.getConnection(); // Get a connection from the pool
+  const idPicture = req.file ? req.file.filename : null;
+  const formattedRegistrationDate = registrationDate ? formatDate(new Date(registrationDate)) : formatDate(new Date());
+
+  // Replace undefined with null in the fields that can be nullable
+  const sanitizedData = {
+    registrationType: registrationType || null,
+    memberType: memberType || null,
+    registrationDate: formattedRegistrationDate,
+    shareCapital: shareCapital || null,
+    fullNameLastName: fullNameLastName || null,
+    fullNameFirstName: fullNameFirstName || null,
+    fullNameMiddleName: fullNameMiddleName || null,
+    maidenName: maidenName || null,
+    tinNumber: tinNumber || null,
+    dateOfBirth: dateOfBirth || null,
+    birthplaceProvince: birthplaceProvince || null,
+    age: age || null,
+    sex: sex || null,
+    civilStatus: civilStatus || null,
+    highestEducationalAttainment: highestEducationalAttainment || null,
+    occupationSourceOfIncome: occupationSourceOfIncome || null,
+    spouseName: spouseName || null,
+    spouseOccupationSourceOfIncome: spouseOccupationSourceOfIncome || null,
+    primaryBeneficiaryName: primaryBeneficiaryName || null,
+    primaryBeneficiaryRelationship: primaryBeneficiaryRelationship || null,
+    primaryBeneficiaryContact: primaryBeneficiaryContact || null,
+    secondaryBeneficiaryName: secondaryBeneficiaryName || null,
+    secondaryBeneficiaryRelationship: secondaryBeneficiaryRelationship || null,
+    secondaryBeneficiaryContact: secondaryBeneficiaryContact || null,
+    contactNumber: contactNumber || null,
+    houseNoStreet: houseNoStreet || null,
+    barangay: barangay || null,
+    city: city || null,
+    referenceName: referenceName || null,
+    position: position || null,
+    referenceContact: referenceContact || null,
+    email: email || null,
+    password: password || null,
+    idPicture: idPicture || null
+  };
+
+  const connection = await db.getConnection();
 
   try {
-    await connection.beginTransaction(); // Start a transaction
+    await connection.beginTransaction(); 
 
-    // Generate unique member ID
     const memberCode = await generateUniqueMemberId();
-
-    // Insert into `member_information` table
-    const memberQuery = ` 
-      INSERT INTO member_information 
-      (memberCode, fullName, age, contactNumber, gender, address, sharedCapital, memberSince, idPicture) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) 
-    `;
-    const memberParams = [memberCode, fullName, age, contactNumber, gender, address, sharedCapital, formattedMemberSince, idPicture];
     
-    // Execute the insert query
-    const memberResult = await connection.execute(memberQuery, memberParams);
+    // Insert member into the members table first
+    const memberQuery = `
+      INSERT INTO members 
+      (memberCode, registrationType, memberType, registrationDate, shareCapital,
+       fullNameLastName, fullNameFirstName, fullNameMiddleName, maidenName, 
+       tinNumber, dateOfBirth, birthplaceProvince, age, sex, civilStatus, 
+       highestEducationalAttainment, occupationSourceOfIncome, spouseName, 
+       spouseOccupationSourceOfIncome, contactNumber, houseNoStreet, barangay, city, idPicture)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    const memberParams = [
+      memberCode, sanitizedData.registrationType, sanitizedData.memberType, sanitizedData.registrationDate, sanitizedData.shareCapital,
+      sanitizedData.fullNameLastName, sanitizedData.fullNameFirstName, sanitizedData.fullNameMiddleName, sanitizedData.maidenName,
+      sanitizedData.tinNumber, sanitizedData.dateOfBirth, sanitizedData.birthplaceProvince, sanitizedData.age, sanitizedData.sex, sanitizedData.civilStatus,
+      sanitizedData.highestEducationalAttainment, sanitizedData.occupationSourceOfIncome, sanitizedData.spouseName, 
+      sanitizedData.spouseOccupationSourceOfIncome, sanitizedData.contactNumber, sanitizedData.houseNoStreet, sanitizedData.barangay, sanitizedData.city, sanitizedData.idPicture
+    ];
 
-    // Check if the member was inserted successfully
+    const [memberResult] = await connection.execute(memberQuery, memberParams);
+
     if (memberResult.affectedRows === 0) {
       throw new Error('Failed to insert member information');
     }
 
-    // Get the last inserted member id
-    const memberId = memberResult[0].insertId; // This gives you the auto-generated id
+    const memberId = memberResult.insertId;  // Capture the memberId (insertId)
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Insert into `member_account` table using the memberId
-    const accountQuery = ` 
+    // Determine account status based on email and password
+    const accountStatus = email && password ? 'ACTIVE' : 'NOT ACTIVATED';
+
+    // Insert into member_account with dynamic accountStatus
+    const accountQuery = `
       INSERT INTO member_account 
-      (memberId, email, password, accountStatus)  
-      VALUES (?, ?, ?, 'ACTIVE') 
+      (memberId, email, password, accountStatus)
+      VALUES (?, ?, ?, ?)
     `;
-    const accountParams = [memberId, email, hashedPassword]; 
+    const accountParams = [
+      memberId, 
+      sanitizedData.email, 
+      sanitizedData.password, 
+      accountStatus
+    ];
     await connection.execute(accountQuery, accountParams);
 
-    await connection.commit(); // Commit the transaction
+    const primaryBeneficiaryQuery = `
+      INSERT INTO beneficiaries 
+      (memberId, beneficiaryName, relationship, beneficiaryContactNumber)
+      VALUES (?, ?, ?, ?)
+    `;
+    const primaryBeneficiaryParams = [memberId, sanitizedData.primaryBeneficiaryName, sanitizedData.primaryBeneficiaryRelationship, sanitizedData.primaryBeneficiaryContact];
+    await connection.execute(primaryBeneficiaryQuery, primaryBeneficiaryParams);
+
+    // Insert secondary beneficiary
+    const secondaryBeneficiaryQuery = `
+      INSERT INTO beneficiaries 
+      (memberId, beneficiaryName, relationship, beneficiaryContactNumber)
+      VALUES (?, ?, ?, ?)
+    `;
+    const secondaryBeneficiaryParams = [memberId, sanitizedData.secondaryBeneficiaryName, sanitizedData.secondaryBeneficiaryRelationship, sanitizedData.secondaryBeneficiaryContact];
+    await connection.execute(secondaryBeneficiaryQuery, secondaryBeneficiaryParams);
+
+    const characterReferencesQuery = `
+      INSERT INTO character_references 
+      (memberId, referenceName, position, referenceContactNumber)
+      VALUES (?, ?, ?, ?)
+    `;
+    const characterReferencesParams = [memberId, sanitizedData.referenceName, sanitizedData.position, sanitizedData.referenceContact];
+    await connection.execute(characterReferencesQuery, characterReferencesParams);
+
+    await connection.commit();
 
     res.status(201).json({ message: 'Member added successfully', idPicture });
   } catch (error) {
     console.error('Error inserting data into MySQL:', error);
-    await connection.rollback(); // Rollback in case of an error
+    await connection.rollback();
     res.status(500).json({ message: 'Error inserting data into MySQL' });
   } finally {
-    connection.release(); // Release the connection back to the pool
+    connection.release();
   }
 };
 
 
-// Controller to handle PUT requests to update a member
-// Update Member Function
-exports.updateMember = async (req, res) => {
-  const id = req.params.id; // Get the member ID from the request parameters
-  const { fullName, age, contactNumber, gender, address, sharedCapital, email, password } = req.body;
-  const idPicture = req.file ? req.file.filename : null;
 
-  // Validate ID
+
+
+
+
+// Update member details
+exports.updateMember = async (req, res) => {
+  const id = req.params.id; 
+  const { fullName, age, contactNumber, gender, address, shareCapital, email, password } = req.body;
+  const idPicture = req.file ? req.file.filename : null; 
+
   if (!id || typeof id !== 'string' || id.trim() === '') {
     return res.status(400).json({ message: 'Invalid member ID' });
-  }
-
-  // Validate required fields
-  if (!fullName || !contactNumber || !gender || !address || !sharedCapital || !email) {
-    return res.status(400).json({ message: 'Please provide all required fields' });
   }
 
   const connection = await db.getConnection();
@@ -177,8 +265,7 @@ exports.updateMember = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // Update `member_information` table
-    const memberQuery = `
+    let memberQuery = `
       UPDATE member_information
       SET 
         fullName = ?, 
@@ -186,36 +273,38 @@ exports.updateMember = async (req, res) => {
         contactNumber = ?, 
         gender = ?, 
         address = ?, 
-        sharedCapital = ?, 
-        idPicture = ?
-      WHERE id = ?  -- Use id instead of memberCode
+        shareCapital = ?
     `;
-    const memberParams = [fullName, age, contactNumber, gender, address, sharedCapital, idPicture, id];
+    const memberParams = [fullName, age, contactNumber, gender, address, shareCapital];
+
+    if (idPicture) {
+      memberQuery += `, idPicture = ?`; 
+      memberParams.push(idPicture);
+    }
+
+    memberQuery += ` WHERE id = ?`; 
+    memberParams.push(id);
+
     await connection.execute(memberQuery, memberParams);
 
-    // Only update the password if it is provided
     if (password) {
-      const hashedPassword = await bcrypt.hash(password, 10); // Hash the password
-      // Update `member_account` table
       const accountQuery = `
         UPDATE member_account
         SET email = ?, password = ?
-        WHERE memberId = ?  -- Ensure to use memberId for the account table
+        WHERE memberId = ?  
       `;
-      const accountParams = [email, hashedPassword, id]; // Use hashed password and memberId
+      const accountParams = [email, password, id]; 
       await connection.execute(accountQuery, accountParams);
     } else {
-      // Update `member_account` table without changing the password
       const accountQuery = `
         UPDATE member_account
         SET email = ?
-        WHERE memberId = ?  -- Ensure to use memberId for the account table
+        WHERE memberId = ?  
       `;
-      const accountParams = [email, id]; // Just update the email
+      const accountParams = [email, id]; 
       await connection.execute(accountQuery, accountParams);
     }
 
-    // Commit the transaction
     await connection.commit();
 
     res.json({ message: 'Member updated successfully' });
@@ -228,11 +317,10 @@ exports.updateMember = async (req, res) => {
   }
 };
 
-// Delete Member Function
+// Delete a member
 exports.deleteMember = async (req, res) => {
-  const id = req.params.id; // Get the member ID from the request parameters
+  const id = req.params.id;
 
-  // Validate ID
   if (!id || typeof id !== 'string' || id.trim() === '') {
     return res.status(400).json({ message: 'Invalid member ID' });
   }
@@ -242,15 +330,12 @@ exports.deleteMember = async (req, res) => {
   try {
     await connection.beginTransaction();
 
-    // Delete from `member_account` table first
-    const accountQuery = "DELETE FROM member_account WHERE memberId = ?";  // Ensure to use memberId
-    const accountResult = await connection.execute(accountQuery, [id]);
+    const accountQuery = "DELETE FROM member_account WHERE memberId = ?";
+    await connection.execute(accountQuery, [id]);
 
-    // Delete from `member_information` table
-    const memberQuery = "DELETE FROM member_information WHERE id = ?"; // Use id instead of memberCode
+    const memberQuery = "DELETE FROM members WHERE memberId = ?";
     const memberResult = await connection.execute(memberQuery, [id]);
 
-    // Commit the transaction
     await connection.commit();
 
     if (memberResult.affectedRows === 0) {
@@ -261,8 +346,26 @@ exports.deleteMember = async (req, res) => {
   } catch (error) {
     console.error('Error deleting data from MySQL:', error);
     await connection.rollback();
-    res.status(500).json({ message: 'Error deleting member information' });
+    res.status(500).json({ message: 'Error deleting member' });
   } finally {
-    await connection.release();
+    connection.release();
+  }
+};
+
+
+exports.activateAccount = async (req, res) => {
+  const { memberId } = req.params;  // Get memberId from the request parameters
+  
+  try {
+    const result = await memberModel.activateAccount(memberId); 
+
+    if (result && result.affectedRows > 0) {
+      return res.status(200).json({ message: 'Account activated successfully!' });
+    } else {
+      return res.status(404).json({ message: 'Member not found or already activated' });
+    }
+  } catch (error) {
+    console.error('Error activating account:', error);
+    return res.status(500).json({ message: 'Error activating account' });
   }
 };

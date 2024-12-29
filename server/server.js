@@ -1,6 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const memberRoutes = require('./routes/memberRoutes');
+const userRoutes = require('./routes/userRoutes')
+const announcementRoutes = require('./routes/announcementRoutes')
+const authRoutes = require('./routes/authRoutes')
+const login = require('./routes/authRoutes')
 const path = require('path');
 
 const app = express();
@@ -18,6 +22,11 @@ app.use((req, res, next) => {
 });
 
 app.use('/api', memberRoutes);
+app.use('/api', userRoutes);
+app.use('/api', announcementRoutes);
+app.use('/api', authRoutes)
+
+
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

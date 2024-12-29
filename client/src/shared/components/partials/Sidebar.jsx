@@ -1,15 +1,15 @@
-import { FaTachometerAlt, FaUsers, FaMoneyBill, FaPiggyBank, FaFile, FaChartLine, FaWrench, FaBullhorn } from 'react-icons/fa';
+import { FaTachometerAlt, FaUsers, FaMoneyBill, FaPiggyBank, FaFile, FaChartLine, FaWrench, FaBullhorn, FaSignOutAlt } from 'react-icons/fa';
 import logo from '../partials/logosibbap.png';  
 
 const SideBar = () => {
   return (
     <div className="w-64 h-screen bg-gray-100 p-4 ">
-    <img src={logo} alt='sibbap logo' className="w-3/4 h-auto mb-4 mx-auto" />
+      <img src={logo} alt='sibbap logo' className="w-3/4 h-auto mb-4 mx-auto" />
       
       <ul className="mt-10">
         <li className="mb-6 flex items-center">
           <FaTachometerAlt className="mr-2 text-gray-700" />
-          <a href="/" className="text-gray-700 hover:text-blue-500">Dashboard</a>
+          <a href="dashboard" className="text-gray-700 hover:text-blue-500">Dashboard</a>
         </li>
         {/* <li className="mb-4 flex items-center">
           <FaUsers className="mr-2 text-gray-700" />
@@ -26,7 +26,7 @@ const SideBar = () => {
         </li>
         <li className="mb-6 flex items-center">
           <FaPiggyBank className="mr-2 text-gray-700" />
-          <a href="investment-savings" className="text-gray-700 hover:text-blue-500">Investment/Savings</a>
+          <a href="savings" className="text-gray-700 hover:text-blue-500">Savings</a>
         </li>
         <li className="mb-6 flex items-center">
           <FaFile className="mr-2 text-gray-700" />
@@ -47,6 +47,10 @@ const SideBar = () => {
         <li className="mb-6 flex items-center">
           <FaWrench className="mr-2 text-gray-700" />
           <a href="maintenance" className="text-gray-700 hover:text-blue-500">Maintenance</a>
+        </li>
+        <li className="mb-6 flex items-center">
+          <FaSignOutAlt className="mr-2 text-gray-700" /> {/* Updated icon */}
+          <a href="logout" className="text-gray-700 hover:text-blue-500">Log out</a>
         </li>
       </ul>
     </div>
